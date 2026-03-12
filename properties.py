@@ -102,9 +102,10 @@ class BakeTurboSettings(bpy.types.PropertyGroup):
         name="Force Mode",
         items=[
             ('NONE', "Auto", "Group by naming convention"),
+            ('SELECTION', "Selection", "Active object = target, other selected = source"),
             ('SINGLE', "Single Object", "Bake each object independently"),
         ],
-        default='NONE',
+        default='SELECTION',
     )
 
 

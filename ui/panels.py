@@ -107,6 +107,8 @@ class BT_PT_HighPoly(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         settings = context.scene.bake_turbo
+        if settings.force_mode == 'SELECTION':
+            return True
         sets = get_bake_sets(context, settings.force_mode)
         return any(bs.objects_high for bs in sets)
 

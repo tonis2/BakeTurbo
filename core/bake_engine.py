@@ -15,7 +15,8 @@ from .image_manager import (
     handle_circular_dependency, cleanup_temp_image,
 )
 from .material_manager import (
-    copy_materials, restore_materials, setup_bake_node, remove_bake_nodes,
+    ensure_materials, copy_materials, restore_materials,
+    setup_bake_node, remove_bake_nodes, connect_bake_result,
 )
 from .node_relinker import (
     relink_for_bake, zero_emission, zero_alpha, zero_transmission,
@@ -149,7 +150,7 @@ def _configure_render(
     bake = scene.render.bake
     bake.margin_type = 'EXTEND'
     bake.margin = settings.padding
-    bake.use_clear = False
+    bake.use_clear = True
 
     # Normal map settings
     if mode.blender_mode == 'NORMAL':
@@ -175,6 +176,9 @@ def _bake_set(
     """Bake a single bake set. Returns True on success."""
     has_high = bool(bset.objects_high)
     all_low = bset.objects_low + bset.objects_float
+
+    # Ensure all target objects have materials
+    ensure_materials(all_low)
 
     # Image setup
     img_name = f"{bset.name}_{mode.id}"
@@ -277,10 +281,20 @@ def _bake_set(
             downsample_image(bake_image, final_image, aa_factor)
             # Remove oversized image
             bpy.data.images.remove(bake_image)
+            bake_image = final_image
+
+        # Pack the image so it's available as a FILE source in other tools
+        bake_image.pack()
 
         cleanup_temp_image(temp_image)
 
     finally:
         restore_materials(mat_originals)
+
+    # Connect the baked image to the target material
+    for obj in bset.objects_low:
+        for slot in obj.material_slots:
+            if slot.material:
+                connect_bake_result(slot.material, bake_image, mode)
 
     return True

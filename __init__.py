@@ -1,16 +1,37 @@
 """Bake Turbo — Professional texture baking toolkit for Blender 5.0+"""
 
-bl_info = {
-    "name": "Bake Turbo",
-    "author": "Tonis",
-    "version": (1, 0, 0),
-    "blender": (5, 0, 0),
-    "location": "View3D > Sidebar > Bake",
-    "description": "Professional texture baking toolkit",
-    "category": "Baking",
-}
+_needs_reload = "bpy" in locals()
 
-from . import preferences, properties, ui
+import bpy
+
+from . import core, modes, preferences, properties, ui
+
+if _needs_reload:
+    import importlib
+    from .core import bake_sets, image_manager, material_manager, node_relinker, bake_engine
+    from .modes import types, standard, pbr
+    from .ui import icons, operators, panels
+
+    # Reload bottom-up: leaf modules first
+    importlib.reload(bake_sets)
+    importlib.reload(image_manager)
+    importlib.reload(material_manager)
+    importlib.reload(node_relinker)
+    importlib.reload(bake_engine)
+    importlib.reload(core)
+
+    importlib.reload(types)
+    importlib.reload(standard)
+    importlib.reload(pbr)
+    importlib.reload(modes)
+
+    importlib.reload(preferences)
+    importlib.reload(properties)
+
+    importlib.reload(icons)
+    importlib.reload(operators)
+    importlib.reload(panels)
+    importlib.reload(ui)
 
 
 def register():

@@ -65,6 +65,22 @@ def get_bake_sets(context: bpy.types.Context, force_mode: str = 'NONE') -> list[
     if force_mode == 'SINGLE':
         return [BakeSet(name=obj.name, objects_low=[obj]) for obj in objects]
 
+    if force_mode == 'SELECTION':
+        active = context.view_layer.objects.active
+        selected = [obj for obj in context.selected_objects if obj.type == 'MESH']
+        if not selected:
+            return []
+        if active and active.type == 'MESH' and active in selected:
+            high = [obj for obj in selected if obj is not active]
+            return [BakeSet(
+                name=active.name,
+                objects_low=[active],
+                objects_high=high,
+            )]
+        else:
+            # No valid active mesh — treat all selected as individual low sets
+            return [BakeSet(name=obj.name, objects_low=[obj]) for obj in selected]
+
     sets_dict: dict[str, BakeSet] = {}
 
     for obj in objects:
