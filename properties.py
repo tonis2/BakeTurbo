@@ -92,6 +92,14 @@ class BakeTurboSettings(bpy.types.PropertyGroup):
         default=(0.0, 0.0, 0.0, 0.0),
     )
 
+    tile_repeat: FloatProperty(
+        name="Tile Repeat",
+        description="Repeat the baked texture this many times (1 = no tiling)",
+        min=1.0,
+        default=1.0,
+        precision=1,
+    )
+
     freeze_selection: BoolProperty(
         name="Freeze Selection",
         description="Keep current bake set selection between bakes",

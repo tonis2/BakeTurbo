@@ -292,9 +292,10 @@ def _bake_set(
         restore_materials(mat_originals)
 
     # Connect the baked image to the target material
+    tile_repeat = settings.tile_repeat
     for obj in bset.objects_low:
         for slot in obj.material_slots:
             if slot.material:
-                connect_bake_result(slot.material, bake_image, mode)
+                connect_bake_result(slot.material, bake_image, mode, tile_repeat)
 
     return True

@@ -41,8 +41,11 @@ class BT_PT_BakeMain(bpy.types.Panel):
 
         layout.separator()
 
-        # Force mode
+        # Device and grouping
+        prefs = context.preferences.addons[__package__.rsplit('.', 1)[0]].preferences
+        layout.prop(prefs, "bake_device", text="Device")
         layout.prop(settings, "force_mode", text="Grouping")
+        layout.prop(settings, "tile_repeat", text="Tiling")
 
         # Bake button
         sets = get_bake_sets(context, settings.force_mode)

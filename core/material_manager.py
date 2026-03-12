@@ -85,7 +85,7 @@ def remove_bake_nodes(material: bpy.types.Material):
         tree.nodes.remove(n)
 
 
-def connect_bake_result(material, image, mode):
+def connect_bake_result(material, image, mode, tile_repeat=1.0):
     """Connect a baked image to the material's Principled BSDF."""
     if not material.use_nodes or not material.node_tree:
         return
@@ -108,6 +108,10 @@ def connect_bake_result(material, image, mode):
     if not tex_node:
         tex_node = tree.nodes.new('ShaderNodeTexImage')
         tex_node.image = image
+
+    # Set up tiling if repeat > 1
+    if tile_repeat > 1.0:
+        _setup_tiling(tree, tex_node, tile_repeat)
 
     if mode.blender_mode == 'NORMAL':
         image.colorspace_settings.name = 'Non-Color'
@@ -136,3 +140,25 @@ def connect_bake_result(material, image, mode):
         if input_name and input_name in principled.inputs:
             tex_node.location = (principled.location[0] - 300, principled.location[1] - 200)
             tree.links.new(tex_node.outputs['Color'], principled.inputs[input_name])
+
+
+def _setup_tiling(tree, tex_node, repeat):
+    """Add Texture Coordinate and Mapping nodes for tiling."""
+    # Check if already connected to a mapping node
+    for link in tree.links:
+        if link.to_node == tex_node and link.to_socket.name == 'Vector':
+            if link.from_node.type == 'MAPPING':
+                # Update existing mapping scale
+                link.from_node.inputs['Scale'].default_value = (repeat, repeat, 1.0)
+                return
+
+    # Create new nodes
+    mapping = tree.nodes.new('ShaderNodeMapping')
+    mapping.location = (tex_node.location[0] - 250, tex_node.location[1])
+    mapping.inputs['Scale'].default_value = (repeat, repeat, 1.0)
+
+    coord = tree.nodes.new('ShaderNodeTexCoord')
+    coord.location = (mapping.location[0] - 200, mapping.location[1])
+
+    tree.links.new(coord.outputs['UV'], mapping.inputs['Vector'])
+    tree.links.new(mapping.outputs['Vector'], tex_node.inputs['Vector'])
