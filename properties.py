@@ -106,11 +106,18 @@ class BakeTurboSettings(bpy.types.PropertyGroup):
         default=False,
     )
 
+    save_to_disk: BoolProperty(
+        name="Save",
+        description="Save baked image to textures/ folder on disk",
+        default=True,
+    )
+
     force_mode: EnumProperty(
         name="Force Mode",
         items=[
             ('NONE', "Auto", "Group by naming convention"),
             ('SELECTION', "Selection", "Active object = target, other selected = source"),
+            ('MULTIRES', "Multires", "Bake sculpted detail from Multiresolution modifier"),
             ('SINGLE', "Single Object", "Bake each object independently"),
         ],
         default='SELECTION',

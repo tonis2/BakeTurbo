@@ -38,6 +38,7 @@ class BT_PT_BakeMain(bpy.types.Panel):
         row.prop(settings, "color_space", text="")
 
         layout.prop(settings, "background_color", text="BG")
+        layout.prop(settings, "save_to_disk")
 
         layout.separator()
 
@@ -48,15 +49,23 @@ class BT_PT_BakeMain(bpy.types.Panel):
         layout.prop(settings, "tile_repeat", text="Tiling")
 
         # Bake button
-        sets = get_bake_sets(context, settings.force_mode)
-        active_sets = [s for s in sets if s.objects_low]
-        set_count = len(active_sets)
+        if settings.force_mode == 'MULTIRES':
+            obj = context.view_layer.objects.active
+            has_multires = obj and obj.type == 'MESH' and any(
+                m.type == 'MULTIRES' for m in obj.modifiers
+            )
+            label = "Bake Multires" if has_multires else "Bake (no Multires)"
+        else:
+            sets = get_bake_sets(context, settings.force_mode)
+            active_sets = [s for s in sets if s.objects_low]
+            set_count = len(active_sets)
+            label = f"Bake ({set_count} set{'s' if set_count != 1 else ''})"
 
         row = layout.row()
         row.scale_y = 1.5
         row.operator(
             "bake_turbo.bake",
-            text=f"Bake ({set_count} set{'s' if set_count != 1 else ''})",
+            text=label,
             icon='RENDER_STILL',
         )
 
@@ -110,6 +119,8 @@ class BT_PT_HighPoly(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         settings = context.scene.bake_turbo
+        if settings.force_mode == 'MULTIRES':
+            return False
         if settings.force_mode == 'SELECTION':
             return True
         sets = get_bake_sets(context, settings.force_mode)

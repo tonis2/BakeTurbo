@@ -96,6 +96,11 @@ def run_bake(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:
         return False
 
     mode = BAKE_MODES[mode_id]
+
+    # Multires bake path
+    if settings.force_mode == 'MULTIRES':
+        return _run_multires_bake(context, operator, mode, settings, prefs)
+
     bake_sets = get_bake_sets(context, settings.force_mode)
 
     if not bake_sets:
@@ -125,7 +130,110 @@ def run_bake(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:
             if not success:
                 return False
 
-    operator.report({'INFO'}, f"Bake complete: {mode.name} ({len(bake_sets)} set(s))")
+    img_names = [f"{bs.name}_{mode.id}" for bs in bake_sets]
+    if settings.save_to_disk:
+        operator.report({'INFO'}, f"Bake complete: image '{img_names[0]}' saved to textures/")
+    else:
+        operator.report({'INFO'}, f"Bake complete: image '{img_names[0]}'")
+    return True
+
+
+def _run_multires_bake(
+    context: bpy.types.Context,
+    operator: bpy.types.Operator,
+    mode: BakeMode,
+    settings,
+    prefs,
+) -> bool:
+    """Bake sculpted detail from a Multiresolution modifier."""
+    obj = context.view_layer.objects.active
+    if not obj or obj.type != 'MESH':
+        operator.report({'ERROR'}, "No active mesh object")
+        return False
+
+    # Find Multiresolution modifier
+    multires = None
+    for mod in obj.modifiers:
+        if mod.type == 'MULTIRES':
+            multires = mod
+            break
+
+    if not multires:
+        operator.report({'ERROR'}, f"'{obj.name}' has no Multiresolution modifier")
+        return False
+
+    if multires.total_levels < 1:
+        operator.report({'ERROR'}, "Multiresolution modifier needs at least 1 subdivision level")
+        return False
+
+    base_size = int(settings.image_size)
+    color_space = resolve_color_space(mode, settings.color_space)
+    use_float = prefs.use_float32
+    bg = tuple(settings.background_color)
+
+    img_name = f"{obj.name}_{mode.id}"
+    bake_image = get_or_create_image(
+        img_name, base_size, base_size,
+        color_space=color_space, use_float=use_float, background=bg,
+    )
+
+    # Ensure material and UV
+    ensure_materials([obj])
+    mat_originals = copy_materials([obj])
+
+    try:
+        for slot in obj.material_slots:
+            if slot.material:
+                setup_bake_node(slot.material, bake_image)
+
+        # Select only the multires object
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+
+        with bake_context(context) as saved:
+            _configure_render(context, settings, prefs, mode)
+
+            bake = context.scene.render.bake
+            bake.use_multires = True
+            bake.use_selected_to_active = False
+
+            try:
+                bpy.ops.object.bake(type=mode.blender_mode)
+            except RuntimeError as e:
+                operator.report({'ERROR'}, f"Multires bake failed: {e}")
+                return False
+
+        # Save to disk if enabled
+        if settings.save_to_disk:
+            import os
+            blend_path = bpy.data.filepath
+            if blend_path:
+                tex_dir = os.path.join(os.path.dirname(blend_path), "textures")
+            else:
+                tex_dir = os.path.join(os.path.expanduser("~"), "BakeTurbo_textures")
+            os.makedirs(tex_dir, exist_ok=True)
+
+            save_path = os.path.join(tex_dir, f"{bake_image.name}.png")
+            bake_image.filepath_raw = save_path
+            bake_image.file_format = 'PNG'
+            bake_image.save()
+            bake_image.source = 'FILE'
+            bake_image.reload()
+
+    finally:
+        restore_materials(mat_originals)
+
+    # Connect result
+    tile_repeat = settings.tile_repeat
+    for slot in obj.material_slots:
+        if slot.material:
+            connect_bake_result(slot.material, bake_image, mode, tile_repeat)
+
+    if settings.save_to_disk:
+        operator.report({'INFO'}, f"Bake complete: image '{bake_image.name}' saved to textures/")
+    else:
+        operator.report({'INFO'}, f"Bake complete: image '{bake_image.name}'")
     return True
 
 
@@ -283,8 +391,22 @@ def _bake_set(
             bpy.data.images.remove(bake_image)
             bake_image = final_image
 
-        # Pack the image so it's available as a FILE source in other tools
-        bake_image.pack()
+        # Save the image to disk if enabled
+        if settings.save_to_disk:
+            import os
+            blend_path = bpy.data.filepath
+            if blend_path:
+                tex_dir = os.path.join(os.path.dirname(blend_path), "textures")
+            else:
+                tex_dir = os.path.join(os.path.expanduser("~"), "BakeTurbo_textures")
+            os.makedirs(tex_dir, exist_ok=True)
+
+            save_path = os.path.join(tex_dir, f"{bake_image.name}.png")
+            bake_image.filepath_raw = save_path
+            bake_image.file_format = 'PNG'
+            bake_image.save()
+            bake_image.source = 'FILE'
+            bake_image.reload()
 
         cleanup_temp_image(temp_image)
 
