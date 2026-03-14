@@ -29,7 +29,7 @@ class BT_PT_BakeMain(bpy.types.Panel):
 
         # Mode-specific: samples
         mode_id = settings.bake_mode
-        if mode_id in BAKE_MODES and BAKE_MODES[mode_id].use_samples:
+        if mode_id == 'BATCH' or (mode_id in BAKE_MODES and BAKE_MODES[mode_id].use_samples):
             layout.prop(settings, "samples")
 
         # AA and color
@@ -40,16 +40,39 @@ class BT_PT_BakeMain(bpy.types.Panel):
         layout.prop(settings, "background_color", text="BG")
         layout.prop(settings, "save_to_disk")
 
+        # Batch map selection when in Batch mode
+        if settings.bake_mode == 'BATCH':
+            box = layout.box()
+            row = box.row(align=True)
+            row.prop(settings, "batch_normal", toggle=True)
+            row.prop(settings, "batch_ao", toggle=True)
+            row.prop(settings, "batch_combined", toggle=True)
+            row = box.row(align=True)
+            row.prop(settings, "batch_base_color", toggle=True)
+            row.prop(settings, "batch_roughness", toggle=True)
+            row.prop(settings, "batch_metallic", toggle=True)
+            row = box.row(align=True)
+            row.prop(settings, "batch_emit", toggle=True)
+
         layout.separator()
 
         # Device and grouping
         prefs = context.preferences.addons[__package__.rsplit('.', 1)[0]].preferences
-        layout.prop(prefs, "bake_device", text="Device")
+        # Only show device selector if a GPU compute device is available
+        cycles_prefs = context.preferences.addons.get('cycles')
+        if cycles_prefs and cycles_prefs.preferences.compute_device_type != 'NONE':
+            layout.prop(prefs, "bake_device", text="Device")
         layout.prop(settings, "force_mode", text="Grouping")
         layout.prop(settings, "tile_repeat", text="Tiling")
 
         # Bake button
-        if settings.force_mode == 'MULTIRES':
+        if settings.bake_mode == 'BATCH':
+            batch_props = ['batch_normal', 'batch_ao', 'batch_combined',
+                           'batch_base_color', 'batch_roughness', 'batch_metallic',
+                           'batch_emit']
+            count = sum(1 for p in batch_props if getattr(settings, p))
+            label = f"Batch Bake ({count} map{'s' if count != 1 else ''})"
+        elif settings.force_mode == 'MULTIRES':
             obj = context.view_layer.objects.active
             has_multires = obj and obj.type == 'MESH' and any(
                 m.type == 'MULTIRES' for m in obj.modifiers

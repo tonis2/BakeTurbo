@@ -91,6 +91,10 @@ def run_bake(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:
     prefs = context.preferences.addons[__package__.rsplit('.', 1)[0]].preferences
 
     mode_id = settings.bake_mode
+    if mode_id == 'BATCH':
+        # Batch is handled by the operator, not here
+        operator.report({'ERROR'}, "Batch mode should be handled by the operator")
+        return False
     if mode_id not in BAKE_MODES:
         operator.report({'ERROR'}, f"Unknown bake mode: {mode_id}")
         return False

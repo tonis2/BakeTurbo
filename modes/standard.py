@@ -8,7 +8,7 @@ STANDARD_MODES: dict[str, BakeMode] = {
     "ao": BakeMode("AO", "ao", "AO", "standard", use_samples=True),
     "normal": BakeMode("Normal", "normal", "NORMAL", "standard"),
     "shadow": BakeMode("Shadow", "shadow", "SHADOW", "standard", use_samples=True),
-    "combined": BakeMode("Combined", "combined", "COMBINED", "standard", use_samples=True),
+    "combined": BakeMode("Lighting", "combined", "COMBINED", "standard", use_samples=True),
     "diffuse": BakeMode("Diffuse", "diffuse", "DIFFUSE", "standard", color_space="sRGB"),
     "roughness": BakeMode("Roughness", "roughness", "ROUGHNESS", "standard"),
     "glossy": BakeMode("Glossy", "glossy", "GLOSSY", "standard"),
