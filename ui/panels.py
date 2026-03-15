@@ -8,6 +8,17 @@ from ..modes import BAKE_MODES
 from ..core.bake_sets import get_bake_sets
 
 
+# --- UIList for trim regions ---
+
+class BT_UL_TrimRegions(bpy.types.UIList):
+    bl_idname = "BT_UL_TrimRegions"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_property, index):
+        layout.prop(item, "name", text="", emboss=False, icon='UV_DATA')
+
+
+# --- Main panel ---
+
 class BT_PT_BakeMain(bpy.types.Panel):
     bl_label = "Bake Turbo"
     bl_idname = "BT_PT_BakeMain"
@@ -19,6 +30,16 @@ class BT_PT_BakeMain(bpy.types.Panel):
         layout = self.layout
         settings = context.scene.bake_turbo
 
+        # Mode switcher
+        layout.prop(settings, "panel_mode", expand=True)
+        layout.separator()
+
+        if settings.panel_mode == 'BAKE':
+            self._draw_bake(context, layout, settings)
+        else:
+            self._draw_trimsheet(context, layout)
+
+    def _draw_bake(self, context, layout, settings):
         # Mode selector
         layout.prop(settings, "bake_mode", text="Mode")
 
@@ -92,6 +113,73 @@ class BT_PT_BakeMain(bpy.types.Panel):
             icon='RENDER_STILL',
         )
 
+    def _draw_trimsheet(self, context, layout):
+        trim = context.scene.bake_turbo_trim
+
+        # Trimsheet selector
+        if len(trim.trimsheets) > 0:
+            ts = trim.get_active_trimsheet()
+            row = layout.row(align=True)
+            row.prop(ts, "name", text="")
+            row.operator("bake_turbo.add_trimsheet", text="", icon='ADD')
+            row.operator("bake_turbo.remove_trimsheet", text="", icon='REMOVE')
+        else:
+            layout.operator("bake_turbo.add_trimsheet", text="New Trimsheet", icon='ADD')
+            return
+
+        ts = trim.get_active_trimsheet()
+        if ts is None:
+            return
+
+        # Navigate between trimsheets if multiple
+        if len(trim.trimsheets) > 1:
+            layout.prop(trim, "active_trimsheet_index", text="Sheet")
+
+        layout.separator()
+
+        # Region list
+        row = layout.row()
+        row.template_list(
+            "BT_UL_TrimRegions", "",
+            ts, "regions",
+            ts, "active_region_index",
+            rows=3,
+        )
+
+        col = row.column(align=True)
+        col.operator("bake_turbo.capture_trim_region", text="", icon='ADD')
+        col.operator("bake_turbo.remove_trim_region", text="", icon='REMOVE')
+        col.separator()
+        op = col.operator("bake_turbo.move_trim_region", text="", icon='TRIA_UP')
+        op.direction = -1
+        op = col.operator("bake_turbo.move_trim_region", text="", icon='TRIA_DOWN')
+        op.direction = 1
+
+        layout.separator()
+
+        # Fit mode
+        layout.prop(trim, "fit_mode", text="Fit")
+
+        # Assign button
+        row = layout.row()
+        row.scale_y = 1.5
+        region = trim.get_active_region()
+        if region:
+            row.operator("bake_turbo.assign_trim", text=f"Assign '{region.name}'", icon='UV_DATA')
+        else:
+            row.operator("bake_turbo.assign_trim", text="Assign", icon='UV_DATA')
+
+        # Post-assignment tools
+        row = layout.row(align=True)
+        op = row.operator("bake_turbo.trim_action", text="Mirror", icon='MOD_MIRROR')
+        op.action = 'MIRROR'
+        op = row.operator("bake_turbo.trim_action", text="Rotate", icon='FILE_REFRESH')
+        op.action = 'ROTATE'
+        op = row.operator("bake_turbo.trim_action", text="90°", icon='FILE_REFRESH')
+        op.action = 'ROTATE_90'
+
+
+# --- Sub-panels (only visible in Bake mode) ---
 
 class BT_PT_BakeSets(bpy.types.Panel):
     bl_label = "Bake Sets"
@@ -101,6 +189,10 @@ class BT_PT_BakeSets(bpy.types.Panel):
     bl_category = "Bake"
     bl_parent_id = "BT_PT_BakeMain"
     bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.bake_turbo.panel_mode == 'BAKE'
 
     def draw(self, context):
         layout = self.layout
@@ -142,6 +234,8 @@ class BT_PT_HighPoly(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         settings = context.scene.bake_turbo
+        if settings.panel_mode != 'BAKE':
+            return False
         if settings.force_mode == 'MULTIRES':
             return False
         if settings.force_mode == 'SELECTION':
@@ -165,6 +259,10 @@ class BT_PT_Selection(bpy.types.Panel):
     bl_parent_id = "BT_PT_BakeMain"
     bl_options = {'DEFAULT_CLOSED'}
 
+    @classmethod
+    def poll(cls, context):
+        return context.scene.bake_turbo.panel_mode == 'BAKE'
+
     def draw(self, context):
         layout = self.layout
         settings = context.scene.bake_turbo
@@ -182,7 +280,70 @@ class BT_PT_Selection(bpy.types.Panel):
         op.object_type = "float"
 
 
-classes = (BT_PT_BakeMain, BT_PT_BakeSets, BT_PT_HighPoly, BT_PT_Selection)
+# --- UV Editor panel ---
+
+class BT_PT_TrimsheetUV(bpy.types.Panel):
+    bl_label = "Trim Sheet Regions"
+    bl_idname = "BT_PT_TrimsheetUV"
+    bl_space_type = 'IMAGE_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = "Bake"
+
+    def draw(self, context):
+        layout = self.layout
+        trim = context.scene.bake_turbo_trim
+
+        # Trimsheet selector
+        if len(trim.trimsheets) == 0:
+            layout.operator("bake_turbo.add_trimsheet", text="New Trimsheet", icon='ADD')
+            return
+
+        ts = trim.get_active_trimsheet()
+        row = layout.row(align=True)
+        row.prop(ts, "name", text="")
+        row.operator("bake_turbo.add_trimsheet", text="", icon='ADD')
+        row.operator("bake_turbo.remove_trimsheet", text="", icon='REMOVE')
+
+        # Navigate between trimsheets
+        if len(trim.trimsheets) > 1:
+            row = layout.row(align=True)
+            row.prop(trim, "active_trimsheet_index", text="Sheet")
+
+        layout.separator()
+
+        # Draw and select tools
+        row = layout.row(align=True)
+        row.operator("bake_turbo.draw_trim_region", text="Draw Region", icon='GREASEPENCIL')
+        row.operator("bake_turbo.select_trim_region", text="Select", icon='RESTRICT_SELECT_OFF')
+
+        layout.separator()
+
+        # Region list
+        if ts and len(ts.regions) > 0:
+            row = layout.row()
+            row.template_list(
+                "BT_UL_TrimRegions", "uv",
+                ts, "regions",
+                ts, "active_region_index",
+                rows=3,
+            )
+            col = row.column(align=True)
+            col.operator("bake_turbo.remove_trim_region", text="", icon='REMOVE')
+            col.separator()
+            op = col.operator("bake_turbo.move_trim_region", text="", icon='TRIA_UP')
+            op.direction = -1
+            op = col.operator("bake_turbo.move_trim_region", text="", icon='TRIA_DOWN')
+            op.direction = 1
+
+
+classes = (
+    BT_UL_TrimRegions,
+    BT_PT_BakeMain,
+    BT_PT_BakeSets,
+    BT_PT_HighPoly,
+    BT_PT_Selection,
+    BT_PT_TrimsheetUV,
+)
 
 
 def register():

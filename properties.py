@@ -123,6 +123,15 @@ class BakeTurboSettings(bpy.types.PropertyGroup):
         default=True,
     )
 
+    panel_mode: EnumProperty(
+        name="Panel Mode",
+        items=[
+            ('BAKE', "Bake", "Texture baking tools"),
+            ('TRIMSHEET', "Trim Sheet", "Trim sheet region mapping"),
+        ],
+        default='BAKE',
+    )
+
     force_mode: EnumProperty(
         name="Force Mode",
         items=[
