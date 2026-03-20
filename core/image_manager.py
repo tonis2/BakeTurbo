@@ -31,9 +31,12 @@ def get_or_create_image(
             alpha=True,
             float_buffer=use_float,
         )
+    else:
+        # Existing image reused — clear it via Blender's C API to avoid
+        # GPU buffer desync from large Python pixel writes.
+        image.scale(width, height)
 
     image.colorspace_settings.name = color_space
-    fill_image(image, background)
 
     return image
 

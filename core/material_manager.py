@@ -134,7 +134,6 @@ def connect_bake_result(material, image, mode, tile_repeat=1.0):
             'ROUGHNESS': 'Roughness',
             'EMIT': 'Emission Color',
             'DIFFUSE': 'Base Color',
-            'AO': 'Base Color',
         }
         input_name = input_map.get(mode.blender_mode)
         if input_name and input_name in principled.inputs:

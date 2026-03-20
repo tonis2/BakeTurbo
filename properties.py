@@ -1,7 +1,7 @@
 import bpy
 from bpy.props import (
     EnumProperty, IntProperty, FloatProperty, FloatVectorProperty,
-    BoolProperty, StringProperty,
+    BoolProperty,
 )
 
 from .modes import BAKE_MODES
@@ -9,15 +9,11 @@ from .modes import BAKE_MODES
 
 def _bake_mode_items(self, context):
     items = []
-    # Group by category
     for cat_label, cat_key in [("Standard", "standard"), ("PBR", "pbr")]:
         items.append(("", cat_label, ""))  # separator / header
         for mode_id, mode in BAKE_MODES.items():
             if mode.category == cat_key:
                 items.append((mode_id, mode.name, "", len(items)))
-        # Add Batch as last item under Standard
-        if cat_key == "standard":
-            items.append(("BATCH", "Batch", "Bake multiple map types in one go", len(items)))
     return items
 
 
@@ -103,13 +99,11 @@ class BakeTurboSettings(bpy.types.PropertyGroup):
         precision=1,
     )
 
-    batch_normal: BoolProperty(name="Normal", default=True)
-    batch_ao: BoolProperty(name="AO", default=True)
-    batch_base_color: BoolProperty(name="Base Color", default=False)
-    batch_roughness: BoolProperty(name="Roughness", default=False)
-    batch_metallic: BoolProperty(name="Metallic", default=False)
-    batch_combined: BoolProperty(name="Lighting", default=False)
-    batch_emit: BoolProperty(name="Emit", default=False)
+    target_image: bpy.props.PointerProperty(
+        type=bpy.types.Image,
+        name="Target Image",
+        description="Image to bake into. Leave empty to auto-create",
+    )
 
     save_to_disk: BoolProperty(
         name="Save",

@@ -20,6 +20,15 @@ class BT_OT_Bake(bpy.types.Operator):
             cls.poll_message_set("Must be in Object mode")
             return False
         settings = context.scene.bake_turbo
+        if settings.force_mode == 'MULTIRES':
+            obj = context.view_layer.objects.active
+            if not obj or obj.type != 'MESH':
+                cls.poll_message_set("No active mesh object")
+                return False
+            if not any(m.type == 'MULTIRES' for m in obj.modifiers):
+                cls.poll_message_set("Active object has no Multiresolution modifier")
+                return False
+            return True
         sets = get_bake_sets(context, settings.force_mode)
         if not any(bs.objects_low for bs in sets):
             cls.poll_message_set("No bakeable objects found")
@@ -27,55 +36,8 @@ class BT_OT_Bake(bpy.types.Operator):
         return True
 
     def execute(self, context):
-        settings = context.scene.bake_turbo
-
-        if settings.bake_mode == 'BATCH':
-            return self._batch_bake(context, settings)
-
         success = run_bake(context, self)
         return {'FINISHED'} if success else {'CANCELLED'}
-
-    def _batch_bake(self, context, settings):
-        batch_map = [
-            ('batch_normal', 'normal'),
-            ('batch_ao', 'ao'),
-            ('batch_combined', 'combined'),
-            ('batch_base_color', 'base_color'),
-            ('batch_roughness', 'roughness'),
-            ('batch_metallic', 'metallic'),
-            ('batch_emit', 'emit'),
-        ]
-
-        modes_to_bake = [
-            mode_id for prop, mode_id in batch_map
-            if getattr(settings, prop, False)
-        ]
-
-        if not modes_to_bake:
-            self.report({'ERROR'}, "No map types selected for batch bake")
-            return {'CANCELLED'}
-
-        original_mode = settings.bake_mode
-        baked = []
-        failed = []
-
-        for mode_id in modes_to_bake:
-            settings.bake_mode = mode_id
-            success = run_bake(context, self)
-            if success:
-                baked.append(mode_id)
-            else:
-                failed.append(mode_id)
-
-        settings.bake_mode = original_mode
-
-        if failed:
-            self.report({'WARNING'},
-                f"Batch bake: {len(baked)} done, {len(failed)} failed ({', '.join(failed)})")
-        else:
-            self.report({'INFO'}, f"Batch bake complete: {', '.join(baked)}")
-
-        return {'FINISHED'} if baked else {'CANCELLED'}
 
 
 classes = (BT_OT_Bake,)

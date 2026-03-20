@@ -33,6 +33,7 @@ class _SavedRenderSettings:
     margin: int = 0
     use_clear: bool = False
     use_selected_to_active: bool = False
+    use_multires: bool = False
     cage_extrusion: float = 0.0
     max_ray_distance: float = 0.0
     normal_space: str = ""
@@ -57,6 +58,7 @@ def bake_context(context: bpy.types.Context):
         margin=bake.margin,
         use_clear=bake.use_clear,
         use_selected_to_active=bake.use_selected_to_active,
+        use_multires=bake.use_multires,
         cage_extrusion=bake.cage_extrusion,
         max_ray_distance=bake.max_ray_distance,
         normal_space=bake.normal_space,
@@ -76,6 +78,7 @@ def bake_context(context: bpy.types.Context):
         bake.margin = saved.margin
         bake.use_clear = saved.use_clear
         bake.use_selected_to_active = saved.use_selected_to_active
+        bake.use_multires = saved.use_multires
         bake.cage_extrusion = saved.cage_extrusion
         bake.max_ray_distance = saved.max_ray_distance
         bake.normal_space = saved.normal_space
@@ -91,10 +94,6 @@ def run_bake(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:
     prefs = context.preferences.addons[__package__.rsplit('.', 1)[0]].preferences
 
     mode_id = settings.bake_mode
-    if mode_id == 'BATCH':
-        # Batch is handled by the operator, not here
-        operator.report({'ERROR'}, "Batch mode should be handled by the operator")
-        return False
     if mode_id not in BAKE_MODES:
         operator.report({'ERROR'}, f"Unknown bake mode: {mode_id}")
         return False
@@ -142,6 +141,34 @@ def run_bake(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:
     return True
 
 
+def _get_or_create_multires_target(context, obj):
+    """Find or create a plane for multires bake results."""
+    target_name = f"{obj.name}_baked"
+    target = context.scene.objects.get(target_name)
+    if target is not None:
+        return target, False
+
+    # Create a plane at the same location as the original
+    bpy.ops.mesh.primitive_plane_add(location=obj.location)
+    plane = context.view_layer.objects.active
+    plane.name = target_name
+
+    # Scale to match the original's bounding box dimensions
+    from mathutils import Vector
+    bbox_world = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
+    min_co = Vector((min(v.x for v in bbox_world), min(v.y for v in bbox_world), min(v.z for v in bbox_world)))
+    max_co = Vector((max(v.x for v in bbox_world), max(v.y for v in bbox_world), max(v.z for v in bbox_world)))
+    dims = max_co - min_co
+    plane.scale = (dims.x / 2 or 1, dims.y / 2 or 1, 1)
+
+    # Create a new material with Principled BSDF
+    mat = bpy.data.materials.new(name=target_name)
+    mat.use_nodes = True
+    plane.data.materials.append(mat)
+
+    return plane, True
+
+
 def _run_multires_bake(
     context: bpy.types.Context,
     operator: bpy.types.Operator,
@@ -149,11 +176,16 @@ def _run_multires_bake(
     settings,
     prefs,
 ) -> bool:
-    """Bake sculpted detail from a Multiresolution modifier."""
+    """Bake normals from a Multiresolution modifier."""
     obj = context.view_layer.objects.active
     if not obj or obj.type != 'MESH':
         operator.report({'ERROR'}, "No active mesh object")
         return False
+
+    # Only support NORMAL for multires
+    if mode.blender_mode != 'NORMAL':
+        operator.report({'WARNING'}, f"'{mode.name}' not supported for multires, skipped")
+        return True
 
     # Find Multiresolution modifier
     multires = None
@@ -170,75 +202,85 @@ def _run_multires_bake(
         operator.report({'ERROR'}, "Multiresolution modifier needs at least 1 subdivision level")
         return False
 
+    # Create target plane first (bake onto it via selected-to-active)
+    target, _created = _get_or_create_multires_target(context, obj)
+
+    # Create image
     base_size = int(settings.image_size)
     color_space = resolve_color_space(mode, settings.color_space)
     use_float = prefs.use_float32
     bg = tuple(settings.background_color)
 
     img_name = f"{obj.name}_{mode.id}"
-    bake_image = get_or_create_image(
-        img_name, base_size, base_size,
-        color_space=color_space, use_float=use_float, background=bg,
-    )
+    if settings.target_image:
+        bake_image = settings.target_image
+        bake_image.colorspace_settings.name = color_space
+    else:
+        bake_image = get_or_create_image(
+            img_name, base_size, base_size,
+            color_space=color_space, use_float=use_float, background=bg,
+        )
 
-    # Ensure material and UV
-    ensure_materials([obj])
-    mat_originals = copy_materials([obj])
+    # Setup bake node on the TARGET plane's material
+    ensure_materials([target])
+    for slot in target.material_slots:
+        if slot.material:
+            setup_bake_node(slot.material, bake_image)
+
+    # Bake: selected-to-active (high-poly mesh → flat plane)
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)        # high-poly = selected
+    target.select_set(True)     # target = also selected
+    context.view_layer.objects.active = target  # active = bake target
 
     try:
-        for slot in obj.material_slots:
-            if slot.material:
-                setup_bake_node(slot.material, bake_image)
-
-        # Select only the multires object
-        bpy.ops.object.select_all(action='DESELECT')
-        obj.select_set(True)
-        context.view_layer.objects.active = obj
-
-        with bake_context(context) as saved:
+        with bake_context(context):
             _configure_render(context, settings, prefs, mode)
-
             bake = context.scene.render.bake
-            bake.use_multires = True
-            bake.use_selected_to_active = False
+            bake.use_multires = False
+            bake.use_selected_to_active = True
+            bake.cage_extrusion = settings.cage_extrusion
+            bake.max_ray_distance = settings.ray_distance
 
             try:
-                bpy.ops.object.bake(type=mode.blender_mode)
+                bpy.ops.object.bake(type='NORMAL')
             except RuntimeError as e:
                 operator.report({'ERROR'}, f"Multires bake failed: {e}")
                 return False
-
-        # Save to disk if enabled
-        if settings.save_to_disk:
-            import os
-            blend_path = bpy.data.filepath
-            if blend_path:
-                tex_dir = os.path.join(os.path.dirname(blend_path), "textures")
-            else:
-                tex_dir = os.path.join(os.path.expanduser("~"), "BakeTurbo_textures")
-            os.makedirs(tex_dir, exist_ok=True)
-
-            save_path = os.path.join(tex_dir, f"{bake_image.name}.png")
-            bake_image.filepath_raw = save_path
-            bake_image.file_format = 'PNG'
-            bake_image.save()
-            bake_image.source = 'FILE'
-            bake_image.reload()
-
     finally:
-        restore_materials(mat_originals)
+        # Clean up bake nodes from target
+        for slot in target.material_slots:
+            if slot.material:
+                remove_bake_nodes(slot.material)
 
-    # Connect result
-    tile_repeat = settings.tile_repeat
-    for slot in obj.material_slots:
-        if slot.material:
-            connect_bake_result(slot.material, bake_image, mode, tile_repeat)
+    # Save if enabled
+    _save_image_if_enabled(bake_image, settings)
 
-    if settings.save_to_disk:
-        operator.report({'INFO'}, f"Bake complete: image '{bake_image.name}' saved to textures/")
-    else:
-        operator.report({'INFO'}, f"Bake complete: image '{bake_image.name}'")
+    # Connect normal map to target plane's material
+    connect_bake_result(target.material_slots[0].material, bake_image, mode, settings.tile_repeat)
+
+    operator.report({'INFO'}, f"Bake complete: '{bake_image.name}'")
     return True
+
+
+def _save_image_if_enabled(image, settings):
+    """Save a baked image to the textures directory if save_to_disk is on."""
+    if not settings.save_to_disk:
+        return
+    import os
+    blend_path = bpy.data.filepath
+    if blend_path:
+        tex_dir = os.path.join(os.path.dirname(blend_path), "textures")
+    else:
+        tex_dir = os.path.join(os.path.expanduser("~"), "BakeTurbo_textures")
+    os.makedirs(tex_dir, exist_ok=True)
+
+    save_path = os.path.join(tex_dir, f"{image.name}.png")
+    image.filepath_raw = save_path
+    image.file_format = 'PNG'
+    image.save()
+    image.source = 'FILE'
+    image.reload()
 
 
 def _configure_render(
@@ -295,8 +337,19 @@ def _bake_set(
     # Image setup
     img_name = f"{bset.name}_{mode.id}"
     bg = tuple(settings.background_color)
+    user_image = settings.target_image
 
-    if aa_factor > 1:
+    if user_image:
+        # Use user-selected target image
+        if aa_factor > 1:
+            bake_image = create_aa_image(
+                img_name, base_size, base_size, aa_factor,
+                color_space=color_space, use_float=use_float, background=bg,
+            )
+        else:
+            bake_image = user_image
+            bake_image.colorspace_settings.name = color_space
+    elif aa_factor > 1:
         bake_image = create_aa_image(
             img_name, base_size, base_size, aa_factor,
             color_space=color_space, use_float=use_float, background=bg,
@@ -346,6 +399,7 @@ def _bake_set(
         bpy.ops.object.select_all(action='DESELECT')
 
         bake = context.scene.render.bake
+        bake.use_multires = False
 
         if has_high:
             bake.use_selected_to_active = True
@@ -386,10 +440,13 @@ def _bake_set(
 
         # AA downsample
         if aa_factor > 1:
-            final_image = get_or_create_image(
-                img_name, base_size, base_size,
-                color_space=color_space, use_float=use_float, background=bg,
-            )
+            if user_image:
+                final_image = user_image
+            else:
+                final_image = get_or_create_image(
+                    img_name, base_size, base_size,
+                    color_space=color_space, use_float=use_float, background=bg,
+                )
             downsample_image(bake_image, final_image, aa_factor)
             # Remove oversized image
             bpy.data.images.remove(bake_image)
