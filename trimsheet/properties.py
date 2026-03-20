@@ -46,7 +46,12 @@ class BT_Trimsheet(bpy.types.PropertyGroup):
 class BT_TrimsheetSettings(bpy.types.PropertyGroup):
     trimsheets: bpy.props.CollectionProperty(type=BT_Trimsheet)  # type: ignore
     active_trimsheet_index: bpy.props.IntProperty(  # type: ignore
-        name="Active Trimsheet", default=0,
+        name="Active Trimsheet", default=0, min=0,
+        get=lambda self: min(self.get("active_trimsheet_index", 0),
+                             max(0, len(self.trimsheets) - 1)),
+        set=lambda self, v: self.__setitem__(
+            "active_trimsheet_index",
+            max(0, min(v, len(self.trimsheets) - 1))),
     )
     fit_mode: bpy.props.EnumProperty(  # type: ignore
         name="Fit",

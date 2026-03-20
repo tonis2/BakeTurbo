@@ -117,19 +117,15 @@ class BT_PT_BakeMain(bpy.types.Panel):
         trim = context.scene.bake_turbo_trim
 
         # Trimsheet selector
-        if len(trim.trimsheets) > 0:
-            ts = trim.get_active_trimsheet()
-            row = layout.row(align=True)
-            row.prop(ts, "name", text="")
-            row.operator("bake_turbo.add_trimsheet", text="", icon='ADD')
-            row.operator("bake_turbo.remove_trimsheet", text="", icon='REMOVE')
-        else:
+        ts = trim.get_active_trimsheet()
+        if ts is None:
             layout.operator("bake_turbo.add_trimsheet", text="New Trimsheet", icon='ADD')
             return
 
-        ts = trim.get_active_trimsheet()
-        if ts is None:
-            return
+        row = layout.row(align=True)
+        row.prop(ts, "name", text="")
+        row.operator("bake_turbo.add_trimsheet", text="", icon='ADD')
+        row.operator("bake_turbo.remove_trimsheet", text="", icon='REMOVE')
 
         # Navigate between trimsheets if multiple
         if len(trim.trimsheets) > 1:
