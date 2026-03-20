@@ -1,5 +1,14 @@
 """Bake Turbo — Professional texture baking toolkit for Blender 5.0+"""
 
+bl_info = {
+    "name": "Bake Turbo",
+    "description": "Professional texture baking toolkit",
+    "author": "Tonis",
+    "version": (1, 0, 0),
+    "blender": (5, 0, 0),
+    "category": "Render",
+}
+
 _needs_reload = "bpy" in locals()
 
 import bpy

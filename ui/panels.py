@@ -178,6 +178,24 @@ class BT_PT_BakeMain(bpy.types.Panel):
         op = row.operator("bake_turbo.trim_action", text="90°", icon='FILE_REFRESH')
         op.action = 'ROTATE_90'
 
+        # UV Snapshot section
+        layout.separator()
+        box = layout.box()
+        box.label(text="UV Snapshot", icon='SCREEN_BACK')
+
+        obj = context.active_object
+        if obj and obj.type == 'MESH':
+            snap = obj.bake_turbo_uv_snapshot
+            if snap.source_object is not None:
+                box.label(text=f"Snapshot: {snap.source_object.name}", icon='OBJECT_DATA')
+                box.operator("bake_turbo.restore_uvs", text="Restore UVs", icon='LOOP_BACK')
+            else:
+                box.operator("bake_turbo.save_uvs", text="Save UVs", icon='FILE_TICK')
+        else:
+            col = box.column()
+            col.enabled = False
+            col.label(text="Select a mesh object")
+
 
 # --- Sub-panels (only visible in Bake mode) ---
 
