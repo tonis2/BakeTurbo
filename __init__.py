@@ -23,6 +23,7 @@ if _needs_reload:
         math_utils, geometry_2d, unwrap as ts_unwrap,
         properties as ts_properties, engine as ts_engine,
         operators as ts_operators, uv_operators, uv_draw,
+        trim_path,
     )
     from .ui import icons, operators, panels
 
@@ -50,6 +51,7 @@ if _needs_reload:
     importlib.reload(ts_operators)
     importlib.reload(uv_operators)
     importlib.reload(uv_draw)
+    importlib.reload(trim_path)
     importlib.reload(trimsheet)
 
     importlib.reload(icons)

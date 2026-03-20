@@ -13,22 +13,6 @@ class UnwrapException(Exception):
     pass
 
 
-def sortEdges(edges):
-    edgesCopy = list(edges)
-    newEdges = [edgesCopy.pop(0)]
-    while edgesCopy:
-        v = newEdges[-1][1]
-        i = 0
-        while edgesCopy[i][0] != v:
-            i += 1
-        newEdges.append(edgesCopy.pop(i))
-    if newEdges[0][0] != newEdges[-1][1]:
-        raise ValueError(
-            f"Last edge {newEdges[-1]} should connect to first edge {newEdges[0]}"
-        )
-    return newEdges
-
-
 def rotationMatrixToFlattenFace(face, indexIncreasing):
     normal1 = faceNormal(compactPoints(face), indexIncreasing)
     normal2 = np.array((0, 0, 1))

@@ -160,14 +160,16 @@ class BT_PT_BakeMain(bpy.types.Panel):
         # Fit mode
         layout.prop(trim, "fit_mode", text="Fit")
 
-        # Assign button
-        row = layout.row()
-        row.scale_y = 1.5
+        # Assign buttons
         region = trim.get_active_region()
-        if region:
-            row.operator("bake_turbo.assign_trim", text=f"Assign '{region.name}'", icon='UV_DATA')
-        else:
-            row.operator("bake_turbo.assign_trim", text="Assign", icon='UV_DATA')
+        region_label = f" '{region.name}'" if region else ""
+
+        col = layout.column(align=True)
+        col.scale_y = 1.5
+        col.operator("bake_turbo.assign_trim",
+                     text="Assign on Faces", icon='UV_DATA')
+        col.operator("bake_turbo.convert_to_trim_path",
+                     text="Assign on Path", icon='CURVE_PATH')
 
         # Post-assignment tools
         row = layout.row(align=True)
@@ -268,36 +270,6 @@ class BT_PT_HighPoly(bpy.types.Panel):
         layout.prop(settings, "ray_distance")
 
 
-class BT_PT_Selection(bpy.types.Panel):
-    bl_label = "Selection"
-    bl_idname = "BT_PT_Selection"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Bake"
-    bl_parent_id = "BT_PT_BakeMain"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    @classmethod
-    def poll(cls, context):
-        return context.scene.bake_turbo.panel_mode == 'BAKE'
-
-    def draw(self, context):
-        layout = self.layout
-        settings = context.scene.bake_turbo
-
-        layout.prop(settings, "freeze_selection")
-
-        row = layout.row(align=True)
-        op = row.operator("bake_turbo.select_by_type", text="Low")
-        op.object_type = "low"
-        op = row.operator("bake_turbo.select_by_type", text="High")
-        op.object_type = "high"
-        op = row.operator("bake_turbo.select_by_type", text="Cage")
-        op.object_type = "cage"
-        op = row.operator("bake_turbo.select_by_type", text="Float")
-        op.object_type = "float"
-
-
 # --- UV Editor panel ---
 
 class BT_PT_TrimsheetUV(bpy.types.Panel):
@@ -359,7 +331,6 @@ classes = (
     BT_PT_BakeMain,
     BT_PT_BakeSets,
     BT_PT_HighPoly,
-    BT_PT_Selection,
     BT_PT_TrimsheetUV,
 )
 

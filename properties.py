@@ -103,12 +103,6 @@ class BakeTurboSettings(bpy.types.PropertyGroup):
         precision=1,
     )
 
-    freeze_selection: BoolProperty(
-        name="Freeze Selection",
-        description="Keep current bake set selection between bakes",
-        default=False,
-    )
-
     batch_normal: BoolProperty(name="Normal", default=True)
     batch_ao: BoolProperty(name="AO", default=True)
     batch_base_color: BoolProperty(name="Base Color", default=False)

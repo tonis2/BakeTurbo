@@ -1,7 +1,6 @@
 """Core UV mapping logic for trim sheet operations."""
 
 import bmesh
-from mathutils import Vector
 
 from .math_utils import compactPoints, normal, compare
 from .geometry_2d import (
