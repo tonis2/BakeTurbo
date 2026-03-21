@@ -174,7 +174,7 @@ def rotate_uvs(obj, bm, uv_layer, degrees=None):
         rotated = rotatePointsFill(current_uvs)
     else:
         if degrees is None:
-            raise TrimsheetError("Rotation degrees required for Fit modes!")
+            degrees = 90
         reference = _last_assignment['reference_uvs']
         rotated_unfit = rotatePointsFit(reference, degrees)
         rotated = _compute_uv_coords(region_coords, rotated_unfit, fit_mode)
@@ -182,5 +182,8 @@ def rotate_uvs(obj, bm, uv_layer, degrees=None):
     for i, face in enumerate(faces):
         for j, loop in enumerate(face.loops):
             loop[uv_layer].uv = rotated[i][j]
+
+    # Update reference so next rotation accumulates
+    _last_assignment['reference_uvs'] = rotated
 
     bmesh.update_edit_mesh(obj.data)

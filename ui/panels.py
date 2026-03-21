@@ -59,7 +59,7 @@ class BT_PT_BakeMain(bpy.types.Panel):
         row.prop(settings, "color_space", text="")
 
         layout.prop(settings, "background_color", text="BG")
-        layout.prop(settings, "target_image", text="Target")
+        layout.prop(settings, "target_image", text="Target", icon='IMAGE_DATA')
         layout.prop(settings, "save_to_disk")
 
         layout.separator()
@@ -125,6 +125,7 @@ class BT_PT_BakeMain(bpy.types.Panel):
 
         col = row.column(align=True)
         col.operator("bake_turbo.capture_trim_region", text="", icon='ADD')
+        col.operator("bake_turbo.recapture_trim_region", text="", icon='FILE_REFRESH')
         col.operator("bake_turbo.remove_trim_region", text="", icon='REMOVE')
         col.separator()
         op = col.operator("bake_turbo.move_trim_region", text="", icon='TRIA_UP')
@@ -152,9 +153,7 @@ class BT_PT_BakeMain(bpy.types.Panel):
         row = layout.row(align=True)
         op = row.operator("bake_turbo.trim_action", text="Mirror", icon='MOD_MIRROR')
         op.action = 'MIRROR'
-        op = row.operator("bake_turbo.trim_action", text="Rotate", icon='FILE_REFRESH')
-        op.action = 'ROTATE'
-        op = row.operator("bake_turbo.trim_action", text="90°", icon='FILE_REFRESH')
+        op = row.operator("bake_turbo.trim_action", text="Rotate 90°", icon='FILE_REFRESH')
         op.action = 'ROTATE_90'
 
         # UV Snapshot section
@@ -283,6 +282,7 @@ class BT_PT_TrimsheetUV(bpy.types.Panel):
         row = layout.row(align=True)
         row.operator("bake_turbo.draw_trim_region", text="Draw Region", icon='GREASEPENCIL')
         row.operator("bake_turbo.select_trim_region", text="Select", icon='RESTRICT_SELECT_OFF')
+        row.prop(trim, "show_regions", text="", icon='HIDE_OFF' if trim.show_regions else 'HIDE_ON')
 
         layout.separator()
 

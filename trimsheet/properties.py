@@ -53,6 +53,11 @@ class BT_TrimsheetSettings(bpy.types.PropertyGroup):
             "active_trimsheet_index",
             max(0, min(v, len(self.trimsheets) - 1))),
     )
+    show_regions: bpy.props.BoolProperty(  # type: ignore
+        name="Show Regions",
+        description="Show trim region overlays in the UV Editor",
+        default=True,
+    )
     fit_mode: bpy.props.EnumProperty(  # type: ignore
         name="Fit",
         items=[

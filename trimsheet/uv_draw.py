@@ -36,6 +36,8 @@ def _draw_regions():
         return
 
     trim_settings = scene.bake_turbo_trim
+    if not trim_settings.show_regions:
+        return
     ts = trim_settings.get_active_trimsheet()
     if ts is None or len(ts.regions) == 0:
         return

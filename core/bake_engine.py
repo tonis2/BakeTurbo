@@ -182,11 +182,6 @@ def _run_multires_bake(
         operator.report({'ERROR'}, "No active mesh object")
         return False
 
-    # Only support NORMAL for multires
-    if mode.blender_mode != 'NORMAL':
-        operator.report({'WARNING'}, f"'{mode.name}' not supported for multires, skipped")
-        return True
-
     # Find Multiresolution modifier
     multires = None
     for mod in obj.modifiers:
@@ -211,15 +206,11 @@ def _run_multires_bake(
     use_float = prefs.use_float32
     bg = tuple(settings.background_color)
 
-    img_name = f"{obj.name}_{mode.id}"
-    if settings.target_image:
-        bake_image = settings.target_image
-        bake_image.colorspace_settings.name = color_space
-    else:
-        bake_image = get_or_create_image(
-            img_name, base_size, base_size,
-            color_space=color_space, use_float=use_float, background=bg,
-        )
+    img_name = settings.target_image or f"{obj.name}_{mode.id}"
+    bake_image = get_or_create_image(
+        img_name, base_size, base_size,
+        color_space=color_space, use_float=use_float, background=bg,
+    )
 
     # Setup bake node on the TARGET plane's material
     ensure_materials([target])
@@ -243,7 +234,7 @@ def _run_multires_bake(
             bake.max_ray_distance = settings.ray_distance
 
             try:
-                bpy.ops.object.bake(type='NORMAL')
+                bpy.ops.object.bake(type=mode.blender_mode)
             except RuntimeError as e:
                 operator.report({'ERROR'}, f"Multires bake failed: {e}")
                 return False
@@ -335,21 +326,10 @@ def _bake_set(
     ensure_materials(all_low)
 
     # Image setup
-    img_name = f"{bset.name}_{mode.id}"
+    img_name = settings.target_image or f"{bset.name}_{mode.id}"
     bg = tuple(settings.background_color)
-    user_image = settings.target_image
 
-    if user_image:
-        # Use user-selected target image
-        if aa_factor > 1:
-            bake_image = create_aa_image(
-                img_name, base_size, base_size, aa_factor,
-                color_space=color_space, use_float=use_float, background=bg,
-            )
-        else:
-            bake_image = user_image
-            bake_image.colorspace_settings.name = color_space
-    elif aa_factor > 1:
+    if aa_factor > 1:
         bake_image = create_aa_image(
             img_name, base_size, base_size, aa_factor,
             color_space=color_space, use_float=use_float, background=bg,
@@ -440,13 +420,10 @@ def _bake_set(
 
         # AA downsample
         if aa_factor > 1:
-            if user_image:
-                final_image = user_image
-            else:
-                final_image = get_or_create_image(
-                    img_name, base_size, base_size,
-                    color_space=color_space, use_float=use_float, background=bg,
-                )
+            final_image = get_or_create_image(
+                img_name, base_size, base_size,
+                color_space=color_space, use_float=use_float, background=bg,
+            )
             downsample_image(bake_image, final_image, aa_factor)
             # Remove oversized image
             bpy.data.images.remove(bake_image)

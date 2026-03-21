@@ -1,7 +1,7 @@
 import bpy
 from bpy.props import (
     EnumProperty, IntProperty, FloatProperty, FloatVectorProperty,
-    BoolProperty,
+    BoolProperty, StringProperty,
 )
 
 from .modes import BAKE_MODES
@@ -99,10 +99,9 @@ class BakeTurboSettings(bpy.types.PropertyGroup):
         precision=1,
     )
 
-    target_image: bpy.props.PointerProperty(
-        type=bpy.types.Image,
+    target_image: StringProperty(
         name="Target Image",
-        description="Image to bake into. Leave empty to auto-create",
+        description="Image name to bake into. Pick existing or type a new name to create. Leave empty to auto-create",
     )
 
     save_to_disk: BoolProperty(

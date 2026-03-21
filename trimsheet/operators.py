@@ -42,7 +42,7 @@ class BT_OT_RemoveTrimsheet(bpy.types.Operator):
 
 
 class BT_OT_CaptureRegion(bpy.types.Operator):
-    """Capture UV coordinates from selected face as a trim region"""
+    """Capture UV coordinates from selected face as a new trim region"""
     bl_idname = "bake_turbo.capture_trim_region"
     bl_label = "Capture Region"
     bl_options = {'REGISTER', 'UNDO'}
@@ -74,6 +74,41 @@ class BT_OT_CaptureRegion(bpy.types.Operator):
         name = f"Region {len(ts.regions) + 1}"
         ts.add_region(name, coords)
         self.report({'INFO'}, f"Captured trim region '{name}'")
+        return {'FINISHED'}
+
+
+class BT_OT_RecaptureRegion(bpy.types.Operator):
+    """Update the active trim region's UV coordinates from selected face"""
+    bl_idname = "bake_turbo.recapture_trim_region"
+    bl_label = "Recapture Region"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        trim = context.scene.bake_turbo_trim
+        return (
+            obj and obj.type == 'MESH' and obj.mode == 'EDIT'
+            and trim.get_active_region() is not None
+        )
+
+    def execute(self, context):
+        obj = context.active_object
+        bm = bmesh.from_edit_mesh(obj.data)
+        uv_layer = bm.loops.layers.uv.active
+        if uv_layer is None:
+            self.report({'ERROR'}, "No active UV map!")
+            return {'CANCELLED'}
+
+        try:
+            coords = capture_region_from_face(bm, uv_layer)
+        except TrimsheetError as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+
+        region = context.scene.bake_turbo_trim.get_active_region()
+        region.set_uv_coords(coords)
+        self.report({'INFO'}, f"Updated trim region '{region.name}'")
         return {'FINISHED'}
 
 
@@ -303,6 +338,7 @@ classes = (
     BT_OT_AddTrimsheet,
     BT_OT_RemoveTrimsheet,
     BT_OT_CaptureRegion,
+    BT_OT_RecaptureRegion,
     BT_OT_RemoveRegion,
     BT_OT_MoveRegion,
     BT_OT_AssignTrim,
