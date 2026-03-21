@@ -85,30 +85,16 @@ class BT_TrimsheetSettings(bpy.types.PropertyGroup):
         return None
 
 
-class BT_UVSnapshot(bpy.types.PropertyGroup):
-    source_object: bpy.props.PointerProperty(  # type: ignore
-        type=bpy.types.Object,
-        name="Snapshot Object",
-        description="Hidden duplicate storing original UVs",
-    )
-    original_name: bpy.props.StringProperty(  # type: ignore
-        name="Original Name",
-        description="Name of the mesh when the snapshot was taken",
-    )
-
-
-classes = (BT_UVCoord, BT_TrimRegion, BT_Trimsheet, BT_TrimsheetSettings, BT_UVSnapshot)
+classes = (BT_UVCoord, BT_TrimRegion, BT_Trimsheet, BT_TrimsheetSettings)
 
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.Scene.bake_turbo_trim = bpy.props.PointerProperty(type=BT_TrimsheetSettings)
-    bpy.types.Object.bake_turbo_uv_snapshot = bpy.props.PointerProperty(type=BT_UVSnapshot)
 
 
 def unregister():
-    del bpy.types.Object.bake_turbo_uv_snapshot
     del bpy.types.Scene.bake_turbo_trim
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)

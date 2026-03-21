@@ -162,19 +162,22 @@ class BT_OT_SelectTrimRegion(bpy.types.Operator):
                 event.mouse_region_x, event.mouse_region_y
             )
             hit = self._hit_test(context, uv)
+            context.area.header_text_set(None)
+            context.area.tag_redraw()
             if hit is not None:
                 ts = context.scene.bake_turbo_trim.get_active_trimsheet()
                 ts.active_region_index = hit
-                context.area.header_text_set(None)
-                context.area.tag_redraw()
                 self.report({'INFO'}, f"Selected '{ts.regions[hit].name}'")
                 return {'FINISHED'}
+            else:
+                self.report({'INFO'}, "No region at click location")
+                return {'CANCELLED'}
 
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
             context.area.header_text_set(None)
             return {'CANCELLED'}
 
-        return {'RUNNING_MODAL'}
+        return {'PASS_THROUGH'}
 
     def _hit_test(self, context, uv_point):
         """Check which region contains the click point. Returns index or None."""

@@ -103,40 +103,88 @@ def _compute_uv_coords(region_coords, flat_mesh_coords, fit_mode):
         raise TrimsheetError(f"Unknown fit mode: {fit_mode}")
 
 
+def _find_connected_groups(faces):
+    """Split faces into connected groups based on shared vertices."""
+    face_to_group = {}
+    groups = []
+
+    for i, face in enumerate(faces):
+        # Find all groups this face connects to via shared vertices
+        connected = set()
+        face_verts = {v.index for v in face.verts}
+        for j, other in enumerate(faces[:i]):
+            if j in face_to_group:
+                other_verts = {v.index for v in other.verts}
+                if face_verts & other_verts:
+                    connected.add(face_to_group[j])
+
+        if not connected:
+            # New group
+            group_id = len(groups)
+            groups.append([i])
+            face_to_group[i] = group_id
+        else:
+            # Merge into first connected group
+            target = min(connected)
+            groups[target].append(i)
+            face_to_group[i] = target
+            # Merge other connected groups into target
+            for gid in connected:
+                if gid != target:
+                    for fi in groups[gid]:
+                        face_to_group[fi] = target
+                    groups[target].extend(groups[gid])
+                    groups[gid] = []
+
+    return [g for g in groups if g]
+
+
 def assign_trim(obj, bm, uv_layer, region_coords, fit_mode):
     """Map selected faces' UVs to fit within the given trim region.
 
+    Handles disconnected faces by processing each connected group separately.
     Returns list of face indices that were assigned.
     """
     selected = [f for f in bm.faces if f.select]
     if not selected:
         raise TrimsheetError("No faces selected!")
 
-    mesh_coords = _parse_mesh_coordinates(selected)
-    seams = _get_seam_edge_neighbors(selected)
+    groups = _find_connected_groups(selected)
 
-    try:
-        flat_mesh_coords = unwrap(mesh_coords, seams)
-    except UnwrapException as e:
-        raise TrimsheetError(str(e))
+    all_face_indices = []
+    all_flat_coords = []
+    all_uv_coords = []
 
-    uv_coords = _compute_uv_coords(region_coords, flat_mesh_coords, fit_mode)
+    for group_indices in groups:
+        group_faces = [selected[i] for i in group_indices]
+        mesh_coords = _parse_mesh_coordinates(group_faces)
+        seams = _get_seam_edge_neighbors(group_faces)
 
-    # Apply UV coordinates to faces
-    for i, face in enumerate(selected):
-        for j, loop in enumerate(face.loops):
-            loop[uv_layer].uv = uv_coords[i][j]
+        try:
+            flat_mesh_coords = unwrap(mesh_coords, seams)
+        except UnwrapException as e:
+            raise TrimsheetError(str(e))
+
+        uv_coords = _compute_uv_coords(region_coords, flat_mesh_coords, fit_mode)
+
+        # Apply UV coordinates to faces
+        for i, face in enumerate(group_faces):
+            for j, loop in enumerate(face.loops):
+                loop[uv_layer].uv = uv_coords[i][j]
+
+        all_face_indices.extend(f.index for f in group_faces)
+        all_flat_coords.extend(flat_mesh_coords)
+        all_uv_coords.extend(uv_coords)
 
     # Store assignment state for mirror/rotate
-    face_indices = [f.index for f in selected]
-    _last_assignment['face_indices'] = face_indices
-    _last_assignment['flat_mesh_coords'] = flat_mesh_coords
+    _last_assignment['face_indices'] = all_face_indices
+    _last_assignment['flat_mesh_coords'] = all_flat_coords
     _last_assignment['region_coords'] = region_coords
     _last_assignment['fit_mode'] = fit_mode
-    _last_assignment['reference_uvs'] = uv_coords
+    _last_assignment['reference_uvs'] = all_uv_coords
 
     bmesh.update_edit_mesh(obj.data)
-    return face_indices
+    return all_face_indices
 
 
 def mirror_uvs(obj, bm, uv_layer):
