@@ -62,6 +62,11 @@ def setup_bake_node(material: bpy.types.Material, image: bpy.types.Image) -> bpy
         return None
 
     tree = material.node_tree
+
+    # Deselect all existing image nodes to avoid baking to the wrong target
+    for n in tree.nodes:
+        n.select = False
+
     node = tree.nodes.new('ShaderNodeTexImage')
     node.name = "BakeTurbo_Target"
     node.label = "Bake Target"

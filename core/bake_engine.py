@@ -141,33 +141,6 @@ def run_bake(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:
     return True
 
 
-def _get_or_create_multires_target(context, obj):
-    """Find or create a plane for multires bake results."""
-    target_name = f"{obj.name}_baked"
-    target = context.scene.objects.get(target_name)
-    if target is not None:
-        return target, False
-
-    # Create a plane at the same location as the original
-    bpy.ops.mesh.primitive_plane_add(location=obj.location)
-    plane = context.view_layer.objects.active
-    plane.name = target_name
-
-    # Scale to match the original's bounding box dimensions
-    from mathutils import Vector
-    bbox_world = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
-    min_co = Vector((min(v.x for v in bbox_world), min(v.y for v in bbox_world), min(v.z for v in bbox_world)))
-    max_co = Vector((max(v.x for v in bbox_world), max(v.y for v in bbox_world), max(v.z for v in bbox_world)))
-    dims = max_co - min_co
-    plane.scale = (dims.x / 2 or 1, dims.y / 2 or 1, 1)
-
-    # Create a new material with Principled BSDF
-    mat = bpy.data.materials.new(name=target_name)
-    mat.use_nodes = True
-    plane.data.materials.append(mat)
-
-    return plane, True
-
 
 def _run_multires_bake(
     context: bpy.types.Context,
@@ -176,7 +149,7 @@ def _run_multires_bake(
     settings,
     prefs,
 ) -> bool:
-    """Bake normals from a Multiresolution modifier."""
+    """Bake from a Multiresolution modifier."""
     obj = context.view_layer.objects.active
     if not obj or obj.type != 'MESH':
         operator.report({'ERROR'}, "No active mesh object")
@@ -197,10 +170,6 @@ def _run_multires_bake(
         operator.report({'ERROR'}, "Multiresolution modifier needs at least 1 subdivision level")
         return False
 
-    # Create target plane first (bake onto it via selected-to-active)
-    target, _created = _get_or_create_multires_target(context, obj)
-
-    # Create image
     base_size = int(settings.image_size)
     color_space = resolve_color_space(mode, settings.color_space)
     use_float = prefs.use_float32
@@ -212,26 +181,37 @@ def _run_multires_bake(
         color_space=color_space, use_float=use_float, background=bg,
     )
 
-    # Setup bake node on the TARGET plane's material
-    ensure_materials([target])
-    for slot in target.material_slots:
-        if slot.material:
-            setup_bake_node(slot.material, bake_image)
+    # Use a fresh temporary material to avoid issues with complex node trees
+    # (e.g. Ucupaint group nodes break baking when present in copied materials)
+    saved_materials = [slot.material for slot in obj.material_slots]
+    temp_mat = bpy.data.materials.new(name=f"{obj.name}_bake_tmp")
+    temp_mat.use_nodes = True
+    setup_bake_node(temp_mat, bake_image)
 
-    # Bake: selected-to-active (high-poly mesh → flat plane)
+    for slot in obj.material_slots:
+        slot.material = temp_mat
+
     bpy.ops.object.select_all(action='DESELECT')
-    obj.select_set(True)        # high-poly = selected
-    target.select_set(True)     # target = also selected
-    context.view_layer.objects.active = target  # active = bake target
+    obj.select_set(True)
+    context.view_layer.objects.active = obj
+
+    saved_render_levels = multires.render_levels
+    multires.render_levels = multires.total_levels
 
     try:
         with bake_context(context):
             _configure_render(context, settings, prefs, mode)
             bake = context.scene.render.bake
-            bake.use_multires = False
-            bake.use_selected_to_active = True
-            bake.cage_extrusion = settings.cage_extrusion
-            bake.max_ray_distance = settings.ray_distance
+
+            if mode.blender_mode == 'NORMAL':
+                # Use Blender's built-in multires bake — bakes sculpted detail
+                # as a normal map directly on the mesh's own UVs.
+                bake.use_multires = True
+                bake.use_selected_to_active = False
+            else:
+                # AO/etc: bake on the fully-subdivided mesh geometry
+                bake.use_multires = False
+                bake.use_selected_to_active = False
 
             try:
                 bpy.ops.object.bake(type=mode.blender_mode)
@@ -239,17 +219,17 @@ def _run_multires_bake(
                 operator.report({'ERROR'}, f"Multires bake failed: {e}")
                 return False
     finally:
-        # Clean up bake nodes from target
-        for slot in target.material_slots:
-            if slot.material:
-                remove_bake_nodes(slot.material)
+        # Restore original materials and clean up temp
+        for i, orig_mat in enumerate(saved_materials):
+            if i < len(obj.material_slots):
+                obj.material_slots[i].material = orig_mat
+        bpy.data.materials.remove(temp_mat)
+        multires.render_levels = saved_render_levels
 
-    # Save if enabled
+    obj.select_set(True)
+    context.view_layer.objects.active = obj
+
     _save_image_if_enabled(bake_image, settings)
-
-    # Connect normal map to target plane's material
-    connect_bake_result(target.material_slots[0].material, bake_image, mode, settings.tile_repeat)
-
     operator.report({'INFO'}, f"Bake complete: '{bake_image.name}'")
     return True
 
