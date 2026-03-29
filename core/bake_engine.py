@@ -149,25 +149,24 @@ def _run_multires_bake(
     settings,
     prefs,
 ) -> bool:
-    """Bake from a Multiresolution modifier."""
-    obj = context.view_layer.objects.active
-    if not obj or obj.type != 'MESH':
-        operator.report({'ERROR'}, "No active mesh object")
-        return False
+    """Bake from Multiresolution modifiers.
 
-    # Find Multiresolution modifier
-    multires = None
-    for mod in obj.modifiers:
-        if mod.type == 'MULTIRES':
-            multires = mod
-            break
+    Bakes all selected mesh objects that have a Multires modifier into
+    a single shared image.  Each object's UVs should occupy a unique
+    region so the results don't overlap (trim-sheet style).
+    """
+    # Collect all selected multires objects
+    bake_objects = []
+    for obj in context.selected_objects:
+        if obj.type != 'MESH':
+            continue
+        for mod in obj.modifiers:
+            if mod.type == 'MULTIRES' and mod.total_levels >= 1:
+                bake_objects.append(obj)
+                break
 
-    if not multires:
-        operator.report({'ERROR'}, f"'{obj.name}' has no Multiresolution modifier")
-        return False
-
-    if multires.total_levels < 1:
-        operator.report({'ERROR'}, "Multiresolution modifier needs at least 1 subdivision level")
+    if not bake_objects:
+        operator.report({'ERROR'}, "No selected mesh with a Multiresolution modifier")
         return False
 
     base_size = int(settings.image_size)
@@ -175,28 +174,33 @@ def _run_multires_bake(
     use_float = prefs.use_float32
     bg = tuple(settings.background_color)
 
-    img_name = settings.target_image or f"{obj.name}_{mode.id}"
+    active = context.view_layer.objects.active
+    name_base = active.name if active in bake_objects else bake_objects[0].name
+    img_name = settings.target_image or f"{name_base}_{mode.id}"
     bake_image = get_or_create_image(
         img_name, base_size, base_size,
         color_space=color_space, use_float=use_float, background=bg,
     )
 
-    # Use a fresh temporary material to avoid issues with complex node trees
-    # (e.g. Ucupaint group nodes break baking when present in copied materials)
-    saved_materials = [slot.material for slot in obj.material_slots]
-    temp_mat = bpy.data.materials.new(name=f"{obj.name}_bake_tmp")
+    # Shared temp material with bake target node
+    temp_mat = bpy.data.materials.new(name="_multires_bake_tmp")
     temp_mat.use_nodes = True
     setup_bake_node(temp_mat, bake_image)
 
-    for slot in obj.material_slots:
-        slot.material = temp_mat
+    # Save per-object state
+    saved_state: list[tuple] = []  # (obj, orig_mats, multires, orig_render_levels)
+    for obj in bake_objects:
+        orig_mats = [slot.material for slot in obj.material_slots]
+        multires = next(m for m in obj.modifiers if m.type == 'MULTIRES')
+        orig_render = multires.render_levels
 
-    bpy.ops.object.select_all(action='DESELECT')
-    obj.select_set(True)
-    context.view_layer.objects.active = obj
+        # Ensure at least one material slot
+        ensure_materials([obj])
+        for slot in obj.material_slots:
+            slot.material = temp_mat
+        multires.render_levels = multires.total_levels
 
-    saved_render_levels = multires.render_levels
-    multires.render_levels = multires.total_levels
+        saved_state.append((obj, orig_mats, multires, orig_render))
 
     try:
         with bake_context(context):
@@ -204,33 +208,45 @@ def _run_multires_bake(
             bake = context.scene.render.bake
 
             if mode.blender_mode == 'NORMAL':
-                # Use Blender's built-in multires bake — bakes sculpted detail
-                # as a normal map directly on the mesh's own UVs.
                 bake.use_multires = True
                 bake.use_selected_to_active = False
             else:
-                # AO/etc: bake on the fully-subdivided mesh geometry
                 bake.use_multires = False
                 bake.use_selected_to_active = False
 
-            try:
-                bpy.ops.object.bake(type=mode.blender_mode)
-            except RuntimeError as e:
-                operator.report({'ERROR'}, f"Multires bake failed: {e}")
-                return False
-    finally:
-        # Restore original materials and clean up temp
-        for i, orig_mat in enumerate(saved_materials):
-            if i < len(obj.material_slots):
-                obj.material_slots[i].material = orig_mat
-        bpy.data.materials.remove(temp_mat)
-        multires.render_levels = saved_render_levels
+            # Bake each object individually into the shared image.
+            # Clear only on the first object so results accumulate.
+            for idx, obj in enumerate(bake_objects):
+                bake.use_clear = (idx == 0)
 
-    obj.select_set(True)
-    context.view_layer.objects.active = obj
+                bpy.ops.object.select_all(action='DESELECT')
+                obj.select_set(True)
+                context.view_layer.objects.active = obj
+
+                try:
+                    bpy.ops.object.bake(type=mode.blender_mode)
+                except RuntimeError as e:
+                    operator.report({'ERROR'}, f"Multires bake failed on '{obj.name}': {e}")
+                    return False
+    finally:
+        # Restore original materials and render levels
+        for obj, orig_mats, multires, orig_render in saved_state:
+            for i, mat in enumerate(orig_mats):
+                if i < len(obj.material_slots):
+                    obj.material_slots[i].material = mat
+            multires.render_levels = orig_render
+        bpy.data.materials.remove(temp_mat)
+
+    # Restore selection
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in bake_objects:
+        obj.select_set(True)
+    if active:
+        context.view_layer.objects.active = active
 
     _save_image_if_enabled(bake_image, settings)
-    operator.report({'INFO'}, f"Bake complete: '{bake_image.name}'")
+    count = len(bake_objects)
+    operator.report({'INFO'}, f"Bake complete: '{bake_image.name}' ({count} object{'s' if count > 1 else ''})")
     return True
 
 
