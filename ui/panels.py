@@ -279,6 +279,8 @@ class BT_PT_TrimsheetUV(bpy.types.Panel):
                 rows=3,
             )
             col = row.column(align=True)
+            col.operator("bake_turbo.capture_trim_region", text="", icon='ADD')
+            col.operator("bake_turbo.recapture_trim_region", text="", icon='FILE_REFRESH')
             col.operator("bake_turbo.remove_trim_region", text="", icon='REMOVE')
             col.separator()
             op = col.operator("bake_turbo.move_trim_region", text="", icon='TRIA_UP')
